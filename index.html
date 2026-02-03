@@ -1,0 +1,2351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CompactNav - 导航·日历·便签·记事本</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/lunar-javascript/lunar.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+            background: #f8fafc;
+            min-height: 100vh;
+            color: #334155;
+        }
+        
+        /* 玻璃拟态效果 */
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        
+        /* 链接卡片 */
+        .link-card {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            position: relative;
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .link-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 10px -6px rgba(0, 0, 0, 0.1);
+            border-color: #cbd5e1;
+        }
+        
+        .link-card:active {
+            transform: translateY(0);
+        }
+        
+        .link-card.dragging {
+            opacity: 0.6;
+            transform: scale(0.95);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+        
+        /* 侧边栏样式 */
+        .sidebar {
+            background: white;
+            border-right: 1px solid #e2e8f0;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-collapsed {
+            width: 72px;
+        }
+        
+        .sidebar-expanded {
+            width: 200px;
+        }
+        
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            margin: 0.25rem 0.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #64748b;
+            position: relative;
+            white-space: nowrap;
+        }
+        
+        .sidebar-item:hover {
+            background: #f1f5f9;
+            color: #334155;
+        }
+        
+        .sidebar-item.active {
+            background: #eff6ff;
+            color: #3b82f6;
+            font-weight: 500;
+        }
+        
+        .sidebar-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 0 3px 3px 0;
+        }
+        
+        .sidebar-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-text {
+            margin-left: 0.75rem;
+            opacity: 1;
+            transition: opacity 0.2s, width 0.3s;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .sidebar-collapsed .sidebar-text {
+            opacity: 0;
+            width: 0;
+            margin-left: 0;
+        }
+        
+        /* 折叠按钮 */
+        .collapse-btn {
+            position: absolute;
+            right: -12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+            z-index: 10;
+        }
+        
+        .collapse-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            transform: translateY(-50%) scale(1.1);
+        }
+        
+        .sidebar-collapsed .collapse-btn i {
+            transform: rotate(180deg);
+        }
+        
+        /* 导航区域 */
+        .nav-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+        }
+        
+        @media (min-width: 1024px) {
+            .nav-container {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            }
+        }
+        
+        /* 顶部栏 */
+        .top-header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            background: #f8fafc;
+        }
+        
+        /* 分类标题 */
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #94a3b8;
+        }
+        
+        /* 模态框样式优化 */
+        .modal {
+            display: none;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* 删除按钮 */
+        .delete-btn {
+            opacity: 0;
+            transition: all 0.2s;
+            position: absolute;
+            top: 0.25rem;
+            right: 0.25rem;
+            width: 24px;
+            height: 24px;
+            background: #fee2e2;
+            color: #ef4444;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+        }
+        
+        .delete-btn:hover {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .link-card:hover .delete-btn {
+            opacity: 1;
+        }
+        
+        /* 搜索框样式 */
+        .search-input {
+            background: #f1f5f9;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .search-input:focus {
+            background: white;
+            border-color: #cbd5e1;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* Tab样式 - 更新为更简约 */
+        .tab-active {
+            background: #eff6ff;
+            color: #3b82f6;
+            font-weight: 500;
+        }
+        
+        .tab-inactive {
+            color: #64748b;
+        }
+        
+        .tab-inactive:hover {
+            color: #334155;
+            background: #f1f5f9;
+        }
+        
+        /* 日历样式 - 保持原有 */
+        .calendar-wrapper {
+            background: white;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .calendar-header {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            background: #3b82f6;
+            color: white;
+            text-align: center;
+            padding: 0.75rem 0;
+            font-weight: 600;
+        }
+        
+        .calendar-body {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background: #e2e8f0;
+        }
+        
+        .calendar-cell {
+            background: white;
+            min-height: 100px;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .calendar-cell:hover {
+            background: #f8fafc;
+        }
+        
+        .calendar-cell.today {
+            background: #eff6ff;
+            box-shadow: inset 0 0 0 2px #3b82f6;
+        }
+        
+        .calendar-cell.other-month {
+            color: #cbd5e1;
+            background: #f8fafc;
+        }
+        
+        .calendar-cell.hidden-cell {
+            display: none;
+        }
+        
+        .cell-date {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        
+        .today .cell-date {
+            color: #3b82f6;
+        }
+        
+        .cell-lunar {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+        
+        .cell-holiday {
+            font-size: 0.7rem;
+            color: #dc2626;
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+        
+        .cell-term {
+            font-size: 0.7rem;
+            color: #059669;
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+        
+        .cell-badge {
+            position: absolute;
+            top: 0.25rem;
+            right: 0.25rem;
+            font-size: 0.65rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+            font-weight: 700;
+        }
+        
+        .badge-xiu {
+            background: #dc2626;
+            color: white;
+        }
+        
+        .badge-ban {
+            background: #64748b;
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .calendar-cell {
+                min-height: 60px;
+                padding: 0.25rem;
+            }
+        }
+        
+        /* 便签样式 - 保持原有 */
+        .note-card {
+            transition: all 0.3s ease;
+            break-inside: avoid;
+            margin-bottom: 1rem;
+            border: 3px solid transparent;
+            cursor: move;
+        }
+        
+        .note-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .note-card.editing {
+            box-shadow: 0 0 0 3px #3b82f6, 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+            cursor: default;
+        }
+        
+        .note-card.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+        
+        .note-card.hidden-note {
+            display: none;
+        }
+        
+        .color-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .color-dot:hover {
+            transform: scale(1.2);
+        }
+        
+        .color-dot.active {
+            border-color: #1f2937;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #1f2937;
+        }
+        
+        .note-blue { background: #dbeafe; border-color: #3b82f6; }
+        .note-red { background: #fee2e2; border-color: #ef4444; }
+        .note-yellow { background: #fef9c3; border-color: #eab308; }
+        .note-gray { background: #f3f4f6; border-color: #9ca3af; }
+        .note-green { background: #dcfce7; border-color: #22c55e; }
+        .note-purple { background: #f3e8ff; border-color: #a855f7; }
+        .note-pink { background: #fce7f3; border-color: #ec4899; }
+        
+        .category-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        
+        .category-tag:hover {
+            transform: translateY(-1px);
+        }
+        
+        .category-tag.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .new-note-card {
+            border: 2px dashed #cbd5e1;
+            background: rgba(255,255,255,0.5);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .new-note-card:hover {
+            border-color: #3b82f6;
+            background: rgba(255,255,255,0.8);
+        }
+        
+        [contenteditable]:empty:before {
+            content: attr(placeholder);
+            color: #9ca3af;
+        }
+        
+        .masonry-grid {
+            column-count: 1;
+            column-gap: 1rem;
+        }
+        
+        @media (min-width: 640px) {
+            .masonry-grid {
+                column-count: 2;
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .masonry-grid {
+                column-count: 3;
+            }
+        }
+        
+        @media (min-width: 1280px) {
+            .masonry-grid {
+                column-count: 4;
+            }
+        }
+        
+        /* 记事本样式 - 保持原有 */
+        .notebook-sidebar {
+            width: 280px;
+            border-right: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+        
+        .notebook-editor {
+            flex: 1;
+            background: white;
+        }
+        
+        .doc-item {
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .doc-item:hover {
+            background: #f1f5f9;
+        }
+        
+        .doc-item.active {
+            background: #eff6ff;
+            border-left-color: #3b82f6;
+        }
+        
+        .doc-item.hidden-doc {
+            display: none;
+        }
+        
+        .editor-textarea {
+            width: 100%;
+            height: 100%;
+            resize: none;
+            border: none;
+            outline: none;
+            font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+            line-height: 1.8;
+            background: transparent;
+        }
+        
+        /* 搜索高亮 */
+        .highlight {
+            background-color: #fef08a;
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+        
+        /* 导入导出按钮 */
+        .action-btn {
+            background: white;
+            border: 1px solid #e2e8f0;
+            color: #64748b;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .action-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            color: #334155;
+        }
+        
+        /* Tooltip for collapsed sidebar */
+        .sidebar-tooltip {
+            position: fixed;
+            left: 80px;
+            background: #1e293b;
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 50;
+        }
+        
+        .sidebar-collapsed .sidebar-item:hover .sidebar-tooltip {
+            opacity: 1;
+        }
+        
+        /* 添加新分组按钮 */
+        .add-category-fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 56px;
+            height: 56px;
+            background: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 40;
+        }
+        
+        .add-category-fab:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+    <!-- 顶部导航栏 - 更新为简约风格 -->
+    <header class="top-header flex-shrink-0 z-30">
+        <div class="flex items-center gap-4 flex-1">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-sm">
+                    <i class="fas fa-compass text-white text-sm"></i>
+                </div>
+                <h1 class="text-xl font-bold text-gray-800 tracking-tight">CompactNav</h1>
+            </div>
+            
+            <!-- Tab切换 -->
+            <div class="flex bg-gray-100 rounded-lg p-1 ml-4">
+                <button onclick="switchTab('nav')" id="navTab" class="px-4 py-1.5 rounded-md text-sm font-medium transition-all tab-active flex items-center gap-2">
+                    <i class="fas fa-th-large text-xs"></i>导航
+                </button>
+                <button onclick="switchTab('calendar')" id="calendarTab" class="px-4 py-1.5 rounded-md text-sm font-medium transition-all tab-inactive flex items-center gap-2">
+                    <i class="fas fa-calendar-alt text-xs"></i>日历
+                </button>
+                <button onclick="switchTab('notes')" id="notesTab" class="px-4 py-1.5 rounded-md text-sm font-medium transition-all tab-inactive flex items-center gap-2">
+                    <i class="fas fa-sticky-note text-xs"></i>便签
+                </button>
+                <button onclick="switchTab('notebook')" id="notebookTab" class="px-4 py-1.5 rounded-md text-sm font-medium transition-all tab-inactive flex items-center gap-2">
+                    <i class="fas fa-book text-xs"></i>记事本
+                </button>
+            </div>
+        </div>
+        
+        <!-- 右侧操作区 -->
+        <div class="flex items-center gap-3">
+            <div id="globalSearch" class="relative hidden">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="text" placeholder="全局搜索..." class="pl-9 pr-4 py-2 text-sm rounded-lg search-input w-64">
+            </div>
+            
+            <!-- 日历控制 -->
+            <div id="calendarControls" class="hidden flex items-center gap-2">
+                <button onclick="calendarPrevMonth()" class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                    <i class="fas fa-chevron-left text-sm"></i>
+                </button>
+                <select id="yearSelect" onchange="changeCalendarDate()" class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white"></select>
+                <select id="monthSelect" onchange="changeCalendarDate()" class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white"></select>
+                <button onclick="calendarNextMonth()" class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                    <i class="fas fa-chevron-right text-sm"></i>
+                </button>
+                <button onclick="calendarToday()" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors">今天</button>
+                <button onclick="exportData('calendar')" class="action-btn" title="导出日历便签"><i class="fas fa-download text-xs"></i></button>
+                <button onclick="importData('calendar')" class="action-btn" title="导入日历便签"><i class="fas fa-upload text-xs"></i></button>
+                <input type="file" id="calendarImportFile" style="display:none" accept=".json" onchange="handleImport('calendar')">
+            </div>
+
+            <!-- 便签控制 -->
+            <div id="notesControls" class="hidden flex items-center gap-2">
+				<div class="relative">
+					<input type="text" id="notesSearchInput" placeholder="搜索便签..." 
+						   class="w-48 pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
+						   oninput="searchNotes()">
+					<i class="fas fa-search absolute left-2.5 top-2 text-gray-400 text-xs"></i>
+				</div>
+                <button onclick="createNewNote()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm shadow-blue-200">
+                    <i class="fas fa-plus text-xs"></i>新建便签
+                </button>
+                <button onclick="exportData('notes')" class="action-btn" title="导出便签"><i class="fas fa-download text-xs"></i></button>
+                <button onclick="importData('notes')" class="action-btn" title="导入便签"><i class="fas fa-upload text-xs"></i></button>
+                <input type="file" id="notesImportFile" style="display:none" accept=".json" onchange="handleImport('notes')">
+            </div>
+
+            <!-- 记事本控制 -->
+            <div id="notebookControls" class="hidden flex items-center gap-2">
+                <button onclick="createNewDoc()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm shadow-blue-200">
+                    <i class="fas fa-file-alt text-xs"></i>新建文档
+                </button>
+                <button onclick="exportData('notebook')" class="action-btn" title="导出记事本"><i class="fas fa-download text-xs"></i></button>
+                <button onclick="importData('notebook')" class="action-btn" title="导入记事本"><i class="fas fa-upload text-xs"></i></button>
+                <input type="file" id="notebookImportFile" style="display:none" accept=".json" onchange="handleImport('notebook')">
+            </div>
+        </div>
+    </header>
+
+    <!-- 主体内容 -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- 导航页侧边栏 -->
+        <div id="navSidebar" class="sidebar sidebar-expanded relative flex-shrink-0 h-full">
+            <div class="p-4 flex items-center justify-between border-b border-gray-100">
+                <span class="font-semibold text-gray-800 sidebar-text">分类目录</span>
+                <i class="fas fa-folder-open text-gray-400 sidebar-icon"></i>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto py-2" id="sidebarCategories">
+                <!-- 动态生成分类 -->
+            </div>
+            
+            <div class="p-4 border-t border-gray-100">
+                <button onclick="toggleSidebar()" class="w-full flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors sidebar-text">
+                    <i class="fas fa-chevron-left mr-2"></i>
+                    <span>收起侧边栏</span>
+                </button>
+                <button onclick="toggleSidebar()" class="w-full flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors hidden" id="expandSidebarBtn">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            
+            <div class="collapse-btn" onclick="toggleSidebar()">
+                <i class="fas fa-chevron-left text-xs text-gray-500 transition-transform duration-300"></i>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <main class="main-content flex-1 p-6">
+            <!-- 导航页 -->
+            <div id="navPage" class="block h-full">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-4 flex-1">
+                        <h2 class="section-title" id="currentCategoryTitle">
+                            <i class="fas fa-globe text-blue-500"></i>
+                            <span>全部网址</span>
+                        </h2>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                            <input type="text" id="navSearchInput" placeholder="搜索网站..." 
+                                   class="pl-9 pr-4 py-2 text-sm rounded-lg search-input w-64"
+                                   oninput="searchNav()">
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm shadow-blue-200">
+                            <i class="fas fa-plus text-xs"></i>添加网址
+                        </button>
+                        <button onclick="exportData('nav')" class="action-btn" title="导出导航"><i class="fas fa-download text-xs"></i></button>
+                        <button onclick="importData('nav')" class="action-btn" title="导入导航"><i class="fas fa-upload text-xs"></i></button>
+                        <input type="file" id="navImportFile" style="display:none" accept=".json" onchange="handleImport('nav')">
+                    </div>
+                </div>
+                
+                <div id="navContainer" class="nav-container">
+                    <!-- 动态生成网址卡片 -->
+                </div>
+                
+                <!-- 空状态 -->
+                <div id="navEmptyState" class="empty-state hidden">
+                    <i class="fas fa-link text-4xl mb-3 opacity-30"></i>
+                    <p class="text-lg font-medium mb-1">暂无网址</p>
+                    <p class="text-sm">点击"添加网址"按钮或选择其他分类</p>
+                </div>
+            </div>
+
+            <!-- 日历页 -->
+            <div id="calendarPage" class="hidden">
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800" id="calendarMonthYear">2026年</h2>
+                            <p class="text-sm text-gray-500 mt-1" id="calendarLunarInfo">农历丙午年</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold text-blue-600" id="currentTime">12:00</div>
+                            <div class="text-sm text-gray-500" id="currentDate">2026年1月1日 星期四</div>
+                        </div>
+                    </div>
+
+                    <div class="calendar-wrapper shadow-sm">
+                        <div class="calendar-header">
+                            <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                        </div>
+                        <div class="calendar-body" id="calendarGrid"></div>
+                    </div>
+
+                    <div class="flex gap-4 mt-4 text-xs text-gray-600 justify-center flex-wrap">
+                        <div class="flex items-center gap-1">
+                            <div class="w-3 h-3 bg-blue-100 border border-blue-500 rounded"></div>
+                            <span>今天</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-3 h-3 bg-red-100 border border-red-400 rounded"></div>
+                            <span class="text-red-600">节假日</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="bg-red-600 text-white px-1 rounded text-[10px]">休</span>
+                            <span>放假</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="bg-gray-600 text-white px-1 rounded text-[10px]">班</span>
+                            <span>调休上班</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="text-emerald-600 font-bold">节气</span>
+                            <span>二十四节气</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 便签页 -->
+            <div id="notesPage" class="hidden">
+                <div class="max-w-7xl mx-auto">
+                    <div class="mb-6 space-y-3">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-sm font-medium text-gray-500 mr-2">分类：</span>
+                            <div id="noteCategoryFilters" class="flex gap-2 flex-wrap"></div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-sm font-medium text-gray-500 mr-2">颜色：</span>
+                            <div id="noteColorFilters" class="flex gap-2 flex-wrap items-center"></div>
+                        </div>
+                    </div>
+                    <div id="notesContainer" class="masonry-grid"></div>
+                </div>
+            </div>
+
+            <!-- 记事本页 -->
+            <div id="notebookPage" class="hidden h-full">
+                <div class="glass-effect rounded-xl shadow-sm h-full flex overflow-hidden border border-gray-200">
+                    <div class="notebook-sidebar flex flex-col h-full">
+                        <div class="p-4 border-b border-gray-200 bg-white">
+                            <div class="relative mb-3">
+                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                                <input type="text" id="notebookSearchInput" placeholder="搜索文档..." 
+                                       class="w-full pl-9 pr-3 py-2 text-sm rounded-lg search-input"
+                                       oninput="searchNotebook()">
+                            </div>
+                            <h3 class="font-bold text-gray-800 text-sm">我的文档</h3>
+                            <p class="text-xs text-gray-500 mt-1">自动保存</p>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-2" id="docList"></div>
+                    </div>
+                    <div class="notebook-editor flex flex-col h-full">
+                        <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                            <input type="text" id="docTitle" placeholder="无标题" 
+                                   class="bg-transparent text-xl font-bold outline-none flex-1 text-gray-800 placeholder-gray-400"
+                                   oninput="updateCurrentDoc()">
+                            <div class="flex gap-2 text-sm text-gray-500">
+                                <span id="docWordCount">0 字</span>
+                                <span id="saveStatus" class="text-green-600 hidden">已保存</span>
+                            </div>
+                        </div>
+                        <div class="flex-1 p-6 overflow-y-auto">
+                            <textarea id="docContent" class="editor-textarea text-gray-700" 
+                                      placeholder="在此开始输入..." oninput="updateCurrentDoc()"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 添加网址模态框 -->
+    <div id="addModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
+            <div class="p-5 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-800">添加网址</h2>
+                <button onclick="closeModal('addModal')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="addForm" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">网站名称</label>
+                    <input type="text" id="siteName" required
+                           class="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                           placeholder="例如：哔哩哔哩">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">网址</label>
+                    <input type="url" id="siteUrl" required
+                           class="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                           placeholder="https://...">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">分组</label>
+                    <select id="categorySelect" class="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white">
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">图标</label>
+                    <div class="flex gap-3 flex-wrap" id="iconSelector">
+                        <button type="button" onclick="selectIcon('globe')" class="icon-option w-10 h-10 rounded-lg border-2 border-blue-500 bg-blue-50 flex items-center justify-center transition-all">
+                            <i class="fas fa-globe text-blue-600"></i>
+                        </button>
+                        <button type="button" onclick="selectIcon('play')" class="icon-option w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center hover:border-blue-500 hover:bg-gray-50 transition-all">
+                            <i class="fas fa-play text-gray-600"></i>
+                        </button>
+                        <button type="button" onclick="selectIcon('music')" class="icon-option w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center hover:border-blue-500 hover:bg-gray-50 transition-all">
+                            <i class="fas fa-music text-gray-600"></i>
+                        </button>
+                        <button type="button" onclick="selectIcon('book')" class="icon-option w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center hover:border-blue-500 hover:bg-gray-50 transition-all">
+                            <i class="fas fa-book text-gray-600"></i>
+                        </button>
+                        <button type="button" onclick="selectIcon('video')" class="icon-option w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center hover:border-blue-500 hover:bg-gray-50 transition-all">
+                            <i class="fas fa-video text-gray-600"></i>
+                        </button>
+                        <button type="button" onclick="selectIcon('shopping-cart')" class="icon-option w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center hover:border-blue-500 hover:bg-gray-50 transition-all">
+                            <i class="fas fa-shopping-cart text-gray-600"></i>
+                        </button>
+                    </div>
+                    <input type="hidden" id="selectedIcon" value="globe">
+                </div>
+                <div class="pt-2 flex gap-3">
+                    <button type="button" onclick="closeModal('addModal')" 
+                            class="flex-1 px-4 py-2.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors">
+                        取消
+                    </button>
+                    <button type="submit" 
+                            class="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm shadow-blue-200 transition-colors">
+                        添加
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加分组模态框 -->
+    <div id="categoryModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div class="p-5 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-800">新建分组</h2>
+                <button onclick="closeModal('categoryModal')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="categoryForm" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">分组名称</label>
+                    <input type="text" id="newCategoryName" required
+                           class="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                           placeholder="例如：视频、音乐、看小说">
+                </div>
+                <div class="pt-2 flex gap-3">
+                    <button type="button" onclick="closeModal('categoryModal')" 
+                            class="flex-1 px-4 py-2.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors">
+                        取消
+                    </button>
+                    <button type="submit" 
+                            class="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm shadow-blue-200 transition-colors">
+                        创建
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 便签分类模态框 -->
+    <div id="noteCategoryModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+            <div class="p-5 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-800">新分类</h2>
+                <button onclick="closeModal('noteCategoryModal')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="customCategoryForm" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">分类名称</label>
+                    <input type="text" id="customCategoryName" required class="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" placeholder="例如：旅行">
+                </div>
+                <div class="pt-2 flex gap-3">
+                    <button type="button" onclick="closeModal('noteCategoryModal')" class="flex-1 px-4 py-2.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors">取消</button>
+                    <button type="submit" class="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm shadow-blue-200 transition-colors">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 日历便签编辑模态框 -->
+    <div id="calendarNoteModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div class="p-5 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-800" id="calendarNoteDateTitle">2026年1月1日</h2>
+                <button onclick="closeModal('calendarNoteModal')" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="calendarNoteForm" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">便签内容</label>
+                    <textarea id="calendarNoteContent" rows="4"
+                              class="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none transition-all"
+                              placeholder="在此输入便签内容..."></textarea>
+                </div>
+                <div class="pt-2 flex gap-3">
+                    <button type="button" onclick="deleteCalendarNote()" 
+                            class="px-4 py-2.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 font-medium transition-colors">
+                        删除
+                    </button>
+                    <div class="flex-1"></div>
+                    <button type="button" onclick="closeModal('calendarNoteModal')" 
+                            class="px-4 py-2.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors">
+                        取消
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm shadow-blue-200 transition-colors">
+                        保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 浮动添加按钮（侧边栏折叠时显示） -->
+    <div class="add-category-fab" onclick="openCategoryModal()" title="新建分组">
+        <i class="fas fa-plus text-xl"></i>
+    </div>
+
+    <script>
+        // ============ 全局状态 ============
+        let currentTab = 'nav';
+        let currentDate = new Date();
+        let selectedCalendarDate = null;
+        let calendarNotes = {};
+        let navSearchTerm = '';
+        let calendarSearchTerm = '';
+        let notesSearchTerm = '';
+        let notebookSearchTerm = '';
+        let currentNavCategory = 'all';
+        let sidebarCollapsed = false;
+
+        // ============ 导航功能 ============
+        let navData = [];
+        const defaultData = [
+            { name: "开发工具", icon: "code", items: [
+                { name: "GitHub", url: "https://github.com", icon: "code" },
+                { name: "Stack Overflow", url: "https://stackoverflow.com", icon: "code" },
+                { name: "Vercel", url: "https://vercel.com", icon: "globe" }
+            ]},
+            { name: "设计资源", icon: "paint-brush", items: [
+                { name: "Figma", url: "https://figma.com", icon: "paint-brush" },
+                { name: "Dribbble", url: "https://dribbble.com", icon: "paint-brush" },
+                { name: "Unsplash", url: "https://unsplash.com", icon: "image" }
+            ]},
+            { name: "学习平台", icon: "graduation-cap", items: [
+                { name: "Coursera", url: "https://coursera.org", icon: "graduation-cap" },
+                { name: "MDN Docs", url: "https://developer.mozilla.org", icon: "book" },
+                { name: "掘金", url: "https://juejin.cn", icon: "code" }
+            ]},
+            { name: "社交媒体", icon: "share-alt", items: [
+                { name: "Twitter", url: "https://twitter.com", icon: "twitter" },
+                { name: "Reddit", url: "https://reddit.com", icon: "reddit" },
+                { name: "Discord", url: "https://discord.com", icon: "hashtag" }
+            ]},
+            { name: "实用工具", icon: "tools", items: [
+                { name: "翻译", url: "https://translate.google.com", icon: "language" },
+                { name: "网盘", url: "https://drive.google.com", icon: "cloud" },
+                { name: "地图", url: "https://maps.google.com", icon: "map" }
+            ]}
+        ];
+        let draggedLink = null;
+        let draggedLinkCategoryIndex = null;
+
+        // ============ 便签功能 ============
+        let notes = [];
+        let noteCategories = ['工作', '学习', '生活'];
+        let noteColors = [
+            { name: '蓝色', value: 'blue', class: 'note-blue' },
+            { name: '红色', value: 'red', class: 'note-red' },
+            { name: '黄色', value: 'yellow', class: 'note-yellow' },
+            { name: '灰色', value: 'gray', class: 'note-gray' },
+            { name: '绿色', value: 'green', class: 'note-green' },
+            { name: '紫色', value: 'purple', class: 'note-purple' },
+            { name: '粉色', value: 'pink', class: 'note-pink' }
+        ];
+        let editingNoteId = null;
+        let filterCategory = 'all';
+        let filterColor = 'all';
+        let draggedNoteId = null;
+
+        // ============ 记事本功能 ============
+        let documents = [];
+        let currentDocId = null;
+        let saveTimeout = null;
+
+        // ============ 2026年节假日数据 ============
+        const holidayData2026 = {
+            '2026-01-01': { holiday: true, name: '元旦' },
+            '2026-01-02': { holiday: true, name: '元旦' },
+            '2026-01-03': { holiday: true, name: '元旦' },
+            '2026-12-30': { work: true },
+            '2026-01-04': { work: true },
+            '2026-02-17': { holiday: true, name: '春节' },
+            '2026-02-18': { holiday: true, name: '春节' },
+            '2026-02-19': { holiday: true, name: '春节' },
+            '2026-02-20': { holiday: true, name: '春节' },
+            '2026-02-21': { holiday: true, name: '春节' },
+            '2026-02-22': { holiday: true, name: '春节' },
+            '2026-02-23': { holiday: true, name: '春节' },
+            '2026-02-15': { work: true },
+            '2026-02-28': { work: true },
+            '2026-04-04': { holiday: true, name: '清明' },
+            '2026-04-05': { holiday: true, name: '清明' },
+            '2026-04-06': { holiday: true, name: '清明' },
+            '2026-04-11': { work: true },
+            '2026-05-01': { holiday: true, name: '劳动' },
+            '2026-05-02': { holiday: true, name: '劳动' },
+            '2026-05-03': { holiday: true, name: '劳动' },
+            '2026-05-04': { holiday: true, name: '劳动' },
+            '2026-05-05': { holiday: true, name: '劳动' },
+            '2026-04-25': { work: true },
+            '2026-05-09': { work: true },
+            '2026-06-19': { holiday: true, name: '端午' },
+            '2026-06-20': { holiday: true, name: '端午' },
+            '2026-06-21': { holiday: true, name: '端午' },
+            '2026-10-01': { holiday: true, name: '国庆' },
+            '2026-10-02': { holiday: true, name: '国庆' },
+            '2026-10-03': { holiday: true, name: '国庆' },
+            '2026-10-04': { holiday: true, name: '国庆' },
+            '2026-10-05': { holiday: true, name: '国庆' },
+            '2026-10-06': { holiday: true, name: '国庆/中秋' },
+            '2026-10-07': { holiday: true, name: '国庆' },
+            '2026-10-08': { holiday: true, name: '国庆' },
+            '2026-09-27': { work: true },
+            '2026-10-10': { work: true },
+        };
+
+        // ============ 初始化 ============
+        function loadData() {
+            const saved = localStorage.getItem('draggableNavData_v3');
+            if (saved) {
+                navData = JSON.parse(saved);
+            } else {
+                navData = JSON.parse(JSON.stringify(defaultData));
+                saveNavData();
+            }
+            
+            const savedNotes = localStorage.getItem('stickyNotes');
+            if (savedNotes) notes = JSON.parse(savedNotes);
+            
+            const savedNoteCats = localStorage.getItem('noteCategories');
+            if (savedNoteCats) noteCategories = JSON.parse(savedNoteCats);
+            
+            const savedDocs = localStorage.getItem('notebookDocs');
+            if (savedDocs) documents = JSON.parse(savedDocs);
+            
+            const savedCalendarNotes = localStorage.getItem('calendarNotes_v2');
+            if (savedCalendarNotes) calendarNotes = JSON.parse(savedCalendarNotes);
+            
+            const savedSidebarState = localStorage.getItem('sidebarCollapsed');
+            if (savedSidebarState === 'true') {
+                sidebarCollapsed = true;
+                applySidebarState();
+            }
+            
+            renderSidebar();
+            renderNav();
+            initCalendar();
+            renderNotesFilters();
+            renderNotes();
+            renderDocList();
+            updateTime();
+            setInterval(updateTime, 1000);
+        }
+
+        function saveNavData() {
+            localStorage.setItem('draggableNavData_v3', JSON.stringify(navData));
+        }
+
+        function saveCalendarNotes() {
+            localStorage.setItem('calendarNotes_v2', JSON.stringify(calendarNotes));
+        }
+
+        function getHostname(url) {
+            try {
+                return new URL(url).hostname.replace(/^www\./, '');
+            } catch {
+                return url;
+            }
+        }
+
+        // ============ 侧边栏功能 ============
+        function toggleSidebar() {
+            sidebarCollapsed = !sidebarCollapsed;
+            localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+            applySidebarState();
+        }
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('navSidebar');
+            const collapseBtn = sidebar.querySelector('.collapse-btn i');
+            const collapseText = sidebar.querySelector('.sidebar-text');
+            const expandBtn = document.getElementById('expandSidebarBtn');
+            
+            if (sidebarCollapsed) {
+                sidebar.classList.remove('sidebar-expanded');
+                sidebar.classList.add('sidebar-collapsed');
+                collapseBtn.style.transform = 'rotate(180deg)';
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+                sidebar.classList.add('sidebar-expanded');
+                collapseBtn.style.transform = 'rotate(0deg)';
+            }
+            
+            // 更新底部按钮
+            const bottomBtn = sidebar.querySelector('.p-4 button');
+            if (sidebarCollapsed) {
+                bottomBtn.classList.add('hidden');
+                if (expandBtn) expandBtn.classList.remove('hidden');
+            } else {
+                bottomBtn.classList.remove('hidden');
+                if (expandBtn) expandBtn.classList.add('hidden');
+            }
+        }
+
+        function renderSidebar() {
+            const container = document.getElementById('sidebarCategories');
+            container.innerHTML = '';
+            
+            // 全部项目
+            const allItem = document.createElement('div');
+            allItem.className = `sidebar-item ${currentNavCategory === 'all' ? 'active' : ''}`;
+            allItem.onclick = () => selectCategory('all');
+            allItem.innerHTML = `
+                <div class="sidebar-icon"><i class="fas fa-th-large"></i></div>
+                <span class="sidebar-text">全部网址</span>
+                ${sidebarCollapsed ? `<span class="sidebar-tooltip">全部网址</span>` : ''}
+            `;
+            container.appendChild(allItem);
+            
+            // 各分类
+            navData.forEach((cat, index) => {
+                const item = document.createElement('div');
+                item.className = `sidebar-item ${currentNavCategory === index ? 'active' : ''}`;
+                item.onclick = () => selectCategory(index);
+                item.innerHTML = `
+                    <div class="sidebar-icon"><i class="fas fa-${cat.icon || 'folder'}"></i></div>
+                    <span class="sidebar-text">${cat.name}</span>
+                    ${sidebarCollapsed ? `<span class="sidebar-tooltip">${cat.name}</span>` : ''}
+                    ${!sidebarCollapsed ? `<span class="ml-auto text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">${cat.items.length}</span>` : ''}
+                `;
+                container.appendChild(item);
+            });
+            
+            // 新建分组按钮（展开时显示在底部，折叠时隐藏）
+            if (!sidebarCollapsed) {
+                const addItem = document.createElement('div');
+                addItem.className = 'sidebar-item text-blue-600 hover:bg-blue-50 mt-2 border-t border-gray-100 pt-2';
+                addItem.onclick = () => openCategoryModal();
+                addItem.innerHTML = `
+                    <div class="sidebar-icon"><i class="fas fa-plus-circle"></i></div>
+                    <span class="sidebar-text font-medium">新建分组</span>
+                `;
+                container.appendChild(addItem);
+            }
+        }
+
+        function selectCategory(index) {
+            currentNavCategory = index;
+            renderSidebar();
+            renderNav();
+        }
+
+        // ============ 导入导出功能 ============
+        function exportData(type) {
+            let data = {};
+            let filename = '';
+            
+            switch(type) {
+                case 'nav':
+                    data = { navData: navData };
+                    filename = 'navigation-backup.json';
+                    break;
+                case 'calendar':
+                    data = { calendarNotes: calendarNotes };
+                    filename = 'calendar-notes-backup.json';
+                    break;
+                case 'notes':
+                    data = { notes: notes, categories: noteCategories };
+                    filename = 'sticky-notes-backup.json';
+                    break;
+                case 'notebook':
+                    data = { documents: documents };
+                    filename = 'notebook-backup.json';
+                    break;
+            }
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(type) {
+            document.getElementById(type + 'ImportFile').click();
+        }
+
+        function handleImport(type) {
+            const fileInput = document.getElementById(type + 'ImportFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    switch(type) {
+                        case 'nav':
+                            if (data.navData) {
+                                navData = data.navData;
+                                saveNavData();
+                                renderSidebar();
+                                renderNav();
+                                alert('导航数据导入成功！');
+                            }
+                            break;
+                        case 'calendar':
+                            if (data.calendarNotes) {
+                                calendarNotes = data.calendarNotes;
+                                saveCalendarNotes();
+                                renderCalendar();
+                                alert('日历便签导入成功！');
+                            }
+                            break;
+                        case 'notes':
+                            if (data.notes) {
+                                notes = data.notes;
+                                if (data.categories) noteCategories = data.categories;
+                                saveNotes();
+                                localStorage.setItem('noteCategories', JSON.stringify(noteCategories));
+                                renderNotesFilters();
+                                renderNotes();
+                                alert('便签数据导入成功！');
+                            }
+                            break;
+                        case 'notebook':
+                            if (data.documents) {
+                                documents = data.documents;
+                                saveDocs();
+                                renderDocList();
+                                alert('记事本数据导入成功！');
+                            }
+                            break;
+                    }
+                } catch (err) {
+                    alert('导入失败：文件格式错误');
+                }
+                fileInput.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        // ============ Tab切换 ============
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            ['nav', 'calendar', 'notes', 'notebook'].forEach(t => {
+                const btn = document.getElementById(t + 'Tab');
+                const page = document.getElementById(t + 'Page');
+                
+                if (t === tab) {
+                    btn.classList.remove('tab-inactive');
+                    btn.classList.add('tab-active');
+                    page.classList.remove('hidden');
+                } else {
+                    btn.classList.remove('tab-active');
+                    btn.classList.add('tab-inactive');
+                    page.classList.add('hidden');
+                }
+            });
+            
+            // 控制侧边栏显示
+            const navSidebar = document.getElementById('navSidebar');
+            if (tab === 'nav') {
+                navSidebar.style.display = 'flex';
+            } else {
+                navSidebar.style.display = 'none';
+            }
+            
+            // 控制特定页面功能显示
+            document.getElementById('calendarControls').classList.toggle('hidden', tab !== 'calendar');
+            document.getElementById('notesControls').classList.toggle('hidden', tab !== 'notes');
+            document.getElementById('notebookControls').classList.toggle('hidden', tab !== 'notebook');
+            
+            if (tab === 'calendar') {
+                renderCalendar();
+            } else if (tab === 'notes') {
+                renderNotes();
+            } else if (tab === 'notebook') {
+                renderDocList();
+            }
+        }
+
+        // ============ 搜索功能 ============
+        function searchNav() {
+            navSearchTerm = document.getElementById('navSearchInput').value.toLowerCase();
+            renderNav();
+        }
+
+        function searchCalendar() {
+            calendarSearchTerm = document.getElementById('calendarSearchInput').value.toLowerCase();
+            renderCalendar();
+        }
+
+        function searchNotes() {
+            notesSearchTerm = document.getElementById('notesSearchInput').value.toLowerCase();
+            renderNotes();
+        }
+
+        function searchNotebook() {
+            notebookSearchTerm = document.getElementById('notebookSearchInput').value.toLowerCase();
+            renderDocList();
+        }
+
+        // ============ 日历功能 ============
+        function initCalendar() {
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            
+            yearSelect.innerHTML = '';
+            for (let y = 1900; y <= 2100; y++) {
+                const option = document.createElement('option');
+                option.value = y;
+                option.textContent = y + '年';
+                yearSelect.appendChild(option);
+            }
+            
+            monthSelect.innerHTML = '';
+            for (let m = 0; m < 12; m++) {
+                const option = document.createElement('option');
+                option.value = m;
+                option.textContent = (m + 1) + '月';
+                monthSelect.appendChild(option);
+            }
+            
+            renderCalendar();
+        }
+
+        function calendarPrevMonth() {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        }
+
+        function calendarNextMonth() {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        }
+
+        function getHolidayInfo(year, month, day) {
+            try {
+                if (typeof Solar !== 'undefined') {
+                    const solar = Solar.fromYmd(year, month, day);
+                    const lunar = solar.getLunar();
+                    const festivals = [];
+                    let isHoliday = false;
+                    let isWorkday = false;
+                    
+                    const monthStr = String(month).padStart(2, '0');
+                    const dayStr = String(day).padStart(2, '0');
+                    const dateKey = `${year}-${monthStr}-${dayStr}`;
+                    
+                    if (year === 2026 && holidayData2026[dateKey]) {
+                        if (holidayData2026[dateKey].holiday) {
+                            isHoliday = true;
+                            festivals.push(holidayData2026[dateKey].name);
+                        }
+                        if (holidayData2026[dateKey].work) {
+                            isWorkday = true;
+                        }
+                    }
+                    
+                    const weekDay = solar.getWeek();
+                    if ((weekDay === 6 || weekDay === 7) && year !== 2026) {
+                        festivals.push('周末');
+                    }
+                    
+                    const lunarMonth = lunar.getMonth();
+                    const lunarDay = lunar.getDay();
+                    
+                    if (lunarMonth === 1 && lunarDay === 1) festivals.push('春节');
+                    else if (lunarMonth === 5 && lunarDay === 5) festivals.push('端午');
+                    else if (lunarMonth === 8 && lunarDay === 15) festivals.push('中秋');
+                    else if (lunarMonth === 1 && lunarDay === 15) festivals.push('元宵');
+                    else if (lunarMonth === 7 && lunarDay === 7) festivals.push('七夕');
+                    else if (lunarMonth === 9 && lunarDay === 9) festivals.push('重阳');
+                    else if (lunarMonth === 12 && lunarDay === 30) festivals.push('除夕');
+                    
+                    if (month === 1 && day === 1) festivals.push('元旦');
+                    else if (month === 2 && day === 14) festivals.push('情人节');
+                    else if (month === 3 && day === 8) festivals.push('妇女节');
+                    else if (month === 4 && day === 1) festivals.push('愚人节');
+                    else if (month === 5 && day === 1) festivals.push('劳动节');
+                    else if (month === 6 && day === 1) festivals.push('儿童节');
+                    else if (month === 7 && day === 1) festivals.push('建党节');
+                    else if (month === 8 && day === 1) festivals.push('建军节');
+                    else if (month === 9 && day === 10) festivals.push('教师节');
+                    else if (month === 10 && day === 1) festivals.push('国庆节');
+                    else if (month === 12 && day === 25) festivals.push('圣诞节');
+                    
+                    let matchesSearch = false;
+                    if (calendarSearchTerm) {
+                        const searchLower = calendarSearchTerm;
+                        if (festivals.some(f => f.includes(searchLower))) matchesSearch = true;
+                        if (String(day).includes(searchLower)) matchesSearch = true;
+                        if (calendarNotes[dateKey] && calendarNotes[dateKey].toLowerCase().includes(searchLower)) {
+                            matchesSearch = true;
+                        }
+                        const lunarStr = lunarDay === 1 ? lunar.getMonthInChinese() + '月' : lunar.getDayInChinese();
+                        if (lunarStr.includes(searchLower)) matchesSearch = true;
+                    }
+                    
+                    const term = lunar.getJieQi();
+                    
+                    return {
+                        festivals: festivals,
+                        isHoliday: isHoliday,
+                        isWorkday: isWorkday,
+                        term: term,
+                        lunar: lunarDay === 1 ? lunar.getMonthInChinese() + '月' : lunar.getDayInChinese(),
+                        matchesSearch: matchesSearch,
+                        dateKey: dateKey
+                    };
+                }
+            } catch (e) {
+                console.error('农历计算错误', e);
+            }
+            
+            return {
+                festivals: [],
+                isHoliday: false,
+                isWorkday: false,
+                term: '',
+                lunar: '',
+                matchesSearch: false,
+                dateKey: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+            };
+        }
+
+        function renderCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            
+            document.getElementById('calendarMonthYear').textContent = `${year}年${month + 1}月`;
+            document.getElementById('yearSelect').value = year;
+            document.getElementById('monthSelect').value = month;
+            
+            try {
+                if (typeof Solar !== 'undefined') {
+                    const solar = Solar.fromYmd(year, month + 1, 1);
+                    document.getElementById('calendarLunarInfo').textContent = 
+                        `农历${solar.getLunar().getYearInGanZhi()}年 ${solar.getLunar().getYearShengXiao()}`;
+                }
+            } catch (e) {
+                document.getElementById('calendarLunarInfo').textContent = '';
+            }
+            
+            const today = new Date();
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const daysInPrevMonth = new Date(year, month, 0).getDate();
+            
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+            
+            for (let i = firstDay - 1; i >= 0; i--) {
+                const day = daysInPrevMonth - i;
+                const cell = createCalendarCell(day, true);
+                grid.appendChild(cell);
+            }
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const isToday = date.toDateString() === today.toDateString();
+                const holidayInfo = getHolidayInfo(year, month + 1, day);
+                const note = calendarNotes[holidayInfo.dateKey];
+                
+                if (calendarSearchTerm && !holidayInfo.matchesSearch && !note) {
+                    const emptyCell = createCalendarCell(day, false, isToday, holidayInfo, note, holidayInfo.dateKey, true);
+                    grid.appendChild(emptyCell);
+                } else {
+                    const cell = createCalendarCell(day, false, isToday, holidayInfo, note, holidayInfo.dateKey, false, calendarSearchTerm && holidayInfo.matchesSearch);
+                    grid.appendChild(cell);
+                }
+            }
+            
+            const totalCells = firstDay + daysInMonth;
+            const remainingCells = 42 - totalCells;
+            for (let day = 1; day <= remainingCells; day++) {
+                const cell = createCalendarCell(day, true);
+                grid.appendChild(cell);
+            }
+        }
+
+        function createCalendarCell(day, isOtherMonth, isToday = false, holidayInfo = null, note = null, dateKey = '', isHidden = false, isHighlighted = false) {
+            const cell = document.createElement('div');
+            cell.className = `calendar-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${isHidden ? 'hidden-cell' : ''} ${isHighlighted ? 'ring-2 ring-yellow-400' : ''}`;
+            
+            let html = '';
+            
+            if (!isOtherMonth && holidayInfo) {
+                if (holidayInfo.isHoliday) {
+                    html += `<span class="cell-badge badge-xiu">休</span>`;
+                } else if (holidayInfo.isWorkday) {
+                    html += `<span class="cell-badge badge-ban">班</span>`;
+                }
+            }
+            
+            html += `<div class="cell-date">${day}</div>`;
+            
+            if (!isOtherMonth && holidayInfo) {
+                if (holidayInfo.lunar) {
+                    html += `<div class="cell-lunar">${holidayInfo.lunar}</div>`;
+                }
+                
+                if (holidayInfo.term) {
+                    html += `<div class="cell-term">${holidayInfo.term}</div>`;
+                }
+                
+                if (holidayInfo.festivals.length > 0) {
+                    html += `<div class="cell-holiday">${holidayInfo.festivals[0]}</div>`;
+                }
+                
+                if (note) {
+                    html += `<div class="mt-1 text-xs text-blue-600 bg-blue-50 rounded px-1 py-0.5 truncate">${note}</div>`;
+                }
+            }
+            
+            cell.innerHTML = html;
+            
+            if (!isOtherMonth && !isHidden) {
+                cell.onclick = () => openCalendarNoteModal(dateKey, day);
+            }
+            
+            return cell;
+        }
+
+        function changeCalendarDate() {
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            currentDate = new Date(year, month, 1);
+            renderCalendar();
+        }
+
+        function calendarToday() {
+            currentDate = new Date();
+            renderCalendar();
+        }
+
+        function openCalendarNoteModal(dateKey, day) {
+            selectedCalendarDate = dateKey;
+            const [year, month, d] = dateKey.split('-');
+            document.getElementById('calendarNoteDateTitle').textContent = `${year}年${month}月${d}日`;
+            document.getElementById('calendarNoteContent').value = calendarNotes[dateKey] || '';
+            document.getElementById('calendarNoteModal').classList.add('active');
+        }
+
+        function deleteCalendarNote() {
+            if (selectedCalendarDate && calendarNotes[selectedCalendarDate]) {
+                if (confirm('确定删除这条便签吗？')) {
+                    delete calendarNotes[selectedCalendarDate];
+                    saveCalendarNotes();
+                    closeModal('calendarNoteModal');
+                    renderCalendar();
+                }
+            } else {
+                closeModal('calendarNoteModal');
+            }
+        }
+
+        document.getElementById('calendarNoteForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const content = document.getElementById('calendarNoteContent').value.trim();
+            
+            if (content) {
+                calendarNotes[selectedCalendarDate] = content;
+            } else {
+                delete calendarNotes[selectedCalendarDate];
+            }
+            
+            saveCalendarNotes();
+            closeModal('calendarNoteModal');
+            renderCalendar();
+        });
+
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+        }
+
+        // ============ 便签功能 ============
+        function renderNotesFilters() {
+            const catContainer = document.getElementById('noteCategoryFilters');
+            catContainer.innerHTML = '';
+            
+            const allTag = document.createElement('span');
+            allTag.className = `category-tag ${filterCategory === 'all' ? 'active' : 'bg-gray-100 text-gray-700'}`;
+            allTag.textContent = '全部';
+            allTag.onclick = () => { filterCategory = 'all'; renderNotesFilters(); renderNotes(); };
+            catContainer.appendChild(allTag);
+            
+            noteCategories.forEach(cat => {
+                const tag = document.createElement('span');
+                tag.className = `category-tag ${filterCategory === cat ? 'active' : 'bg-blue-50 text-blue-700'}`;
+                tag.textContent = cat;
+                tag.onclick = () => { filterCategory = cat; renderNotesFilters(); renderNotes(); };
+                catContainer.appendChild(tag);
+            });
+            
+            const addBtn = document.createElement('span');
+            addBtn.className = 'category-tag bg-white border border-dashed border-gray-300 text-gray-500 hover:border-blue-500 hover:text-blue-600';
+            addBtn.innerHTML = '<i class="fas fa-plus mr-1"></i>添加';
+            addBtn.onclick = () => openModal('noteCategoryModal');
+            catContainer.appendChild(addBtn);
+            
+            const colorContainer = document.getElementById('noteColorFilters');
+            colorContainer.innerHTML = '';
+            
+            const allColor = document.createElement('div');
+            allColor.className = `color-dot ${filterColor === 'all' ? 'active' : ''} bg-gray-300`;
+            allColor.title = '全部';
+            allColor.onclick = () => { filterColor = 'all'; renderNotesFilters(); renderNotes(); };
+            colorContainer.appendChild(allColor);
+            
+            noteColors.forEach(color => {
+                const dot = document.createElement('div');
+                const bgColor = getColorFromClass(color.class);
+                dot.className = `color-dot ${filterColor === color.value ? 'active' : ''}`;
+                dot.style.backgroundColor = bgColor;
+                dot.title = color.name;
+                dot.onclick = () => { filterColor = color.value; renderNotesFilters(); renderNotes(); };
+                colorContainer.appendChild(dot);
+            });
+        }
+
+        function getColorFromClass(className) {
+            const colorMap = {
+                'note-blue': '#3b82f6',
+                'note-red': '#ef4444',
+                'note-yellow': '#eab308',
+                'note-gray': '#9ca3af',
+                'note-green': '#22c55e',
+                'note-purple': '#a855f7',
+                'note-pink': '#ec4899'
+            };
+            return colorMap[className] || '#9ca3af';
+        }
+
+        function renderNotes() {
+            const container = document.getElementById('notesContainer');
+            container.innerHTML = '';
+            
+            let filteredNotes = notes;
+            
+            if (filterCategory !== 'all') {
+                filteredNotes = filteredNotes.filter(n => n.category === filterCategory);
+            }
+            
+            if (filterColor !== 'all') {
+                filteredNotes = filteredNotes.filter(n => n.color === filterColor);
+            }
+            
+            if (notesSearchTerm) {
+                filteredNotes = filteredNotes.filter(n => {
+                    const titleMatch = n.title && n.title.toLowerCase().includes(notesSearchTerm);
+                    const contentMatch = n.content && n.content.toLowerCase().includes(notesSearchTerm);
+                    const categoryMatch = n.category && n.category.toLowerCase().includes(notesSearchTerm);
+                    return titleMatch || contentMatch || categoryMatch;
+                });
+            }
+            
+            const newCard = document.createElement('div');
+            newCard.className = 'new-note-card rounded-xl p-6 flex flex-col items-center justify-center text-gray-400 hover:text-blue-600 note-card';
+            newCard.style.minHeight = '200px';
+            newCard.innerHTML = `
+                <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-2">
+                    <i class="fas fa-plus text-2xl"></i>
+                </div>
+                <span class="font-medium">新建便签</span>
+            `;
+            newCard.onclick = createNewNote;
+            container.appendChild(newCard);
+            
+            filteredNotes.forEach((note, index) => {
+                const colorData = noteColors.find(c => c.value === note.color) || noteColors[0];
+                const card = document.createElement('div');
+                card.className = `note-card rounded-xl p-4 ${colorData.class} ${editingNoteId === note.id ? 'editing' : ''}`;
+                card.style.minHeight = '200px';
+                card.draggable = editingNoteId !== note.id;
+                card.dataset.noteId = note.id;
+                card.dataset.index = index;
+                
+                card.addEventListener('dragstart', handleNoteDragStart);
+                card.addEventListener('dragend', handleNoteDragEnd);
+                card.addEventListener('dragover', handleNoteDragOver);
+                card.addEventListener('drop', handleNoteDrop);
+                
+                const isEditing = editingNoteId === note.id;
+                
+                let colorSelectorHtml = '';
+                if (isEditing) {
+                    colorSelectorHtml = `<div class="flex gap-1 mt-2 mb-2">`;
+                    noteColors.forEach(c => {
+                        const isSelected = note.color === c.value;
+                        const bg = getColorFromClass(c.class);
+                        colorSelectorHtml += `
+                            <div class="w-6 h-6 rounded-full cursor-pointer border-2 ${isSelected ? 'border-gray-800' : 'border-transparent'}" 
+                                 style="background-color: ${bg}" 
+                                 onclick="changeNoteColor('${note.id}', '${c.value}')" title="${c.name}"></div>
+                        `;
+                    });
+                    colorSelectorHtml += `</div>`;
+                }
+                
+                let titleHtml = note.title || '<span class="text-gray-400 italic">无标题</span>';
+                let contentHtml = note.content || '<span class="text-gray-400 italic">点击编辑内容...</span>';
+                
+                if (notesSearchTerm) {
+                    titleHtml = highlightText(titleHtml, notesSearchTerm);
+                    contentHtml = highlightText(contentHtml, notesSearchTerm);
+                }
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex gap-2 flex-wrap flex-1 items-center">
+                            <select onchange="updateNoteCategory('${note.id}', this.value)" 
+                                    class="text-xs px-2 py-1 rounded bg-white/60 border-0 focus:ring-1 focus:ring-blue-500 outline-none" ${!isEditing ? 'disabled style="opacity:0.7"' : ''}>
+                                ${noteCategories.map(cat => 
+                                    `<option value="${cat}" ${note.category === cat ? 'selected' : ''}>${cat}</option>`
+                                ).join('')}
+                            </select>
+                            <div class="w-3 h-3 rounded-full" style="background-color: ${getColorFromClass(colorData.class)}"></div>
+                        </div>
+                        <div class="flex gap-1">
+                            ${isEditing ? `
+                                <button onclick="saveNote('${note.id}')" class="w-7 h-7 rounded bg-green-500 text-white flex items-center justify-center hover:bg-green-600 shadow-sm" title="保存">
+                                    <i class="fas fa-check text-xs"></i>
+                                </button>
+                            ` : `
+                                <button onclick="editNote('${note.id}')" class="w-7 h-7 rounded bg-white/60 text-gray-700 flex items-center justify-center hover:bg-white shadow-sm" title="编辑">
+                                    <i class="fas fa-edit text-xs"></i>
+                                </button>
+                            `}
+                            <button onclick="deleteNote('${note.id}')" class="w-7 h-7 rounded bg-red-500/10 text-red-600 flex items-center justify-center hover:bg-red-500 hover:text-white shadow-sm transition-all" title="删除">
+                                <i class="fas fa-trash text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                    ${colorSelectorHtml}
+                    <div class="space-y-2 mt-2">
+                        <div class="font-bold text-gray-800 text-lg ${isEditing ? 'bg-white/60 p-2 rounded' : ''}" 
+                             ${isEditing ? 'contenteditable="true" id="note-title-' + note.id + '"' : ''} 
+                             placeholder="标题">${titleHtml}</div>
+                        <div class="text-sm text-gray-700 ${isEditing ? 'bg-white/60 p-2 rounded min-h-[100px]' : ''}" 
+                             ${isEditing ? 'contenteditable="true" id="note-content-' + note.id + '"' : ''} 
+                             placeholder="内容">${contentHtml}</div>
+                    </div>
+                    <div class="mt-3 text-[10px] text-gray-500 text-right border-t border-black/5 pt-2">
+                        ${new Date(note.updatedAt).toLocaleString('zh-CN', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function highlightText(text, search) {
+            if (!search) return text;
+            const regex = new RegExp(`(${search})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        function handleNoteDragStart(e) {
+            draggedNoteId = e.target.dataset.noteId;
+            e.target.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleNoteDragEnd(e) {
+            e.target.classList.remove('dragging');
+            draggedNoteId = null;
+        }
+
+        function handleNoteDragOver(e) {
+            e.preventDefault();
+            const draggingCard = document.querySelector('.note-card.dragging');
+            const targetCard = e.target.closest('.note-card');
+            
+            if (targetCard && draggingCard && targetCard !== draggingCard) {
+                const container = document.getElementById('notesContainer');
+                const children = Array.from(container.children);
+                const draggingIndex = children.indexOf(draggingCard);
+                const targetIndex = children.indexOf(targetCard);
+                
+                if (draggingIndex < targetIndex) {
+                    container.insertBefore(draggingCard, targetCard.nextSibling);
+                } else {
+                    container.insertBefore(draggingCard, targetCard);
+                }
+            }
+        }
+
+        function handleNoteDrop(e) {
+            e.preventDefault();
+            if (!draggedNoteId) return;
+            
+            const container = document.getElementById('notesContainer');
+            const cards = container.querySelectorAll('.note-card:not(.new-note-card)');
+            const newOrder = [];
+            
+            cards.forEach(card => {
+                const noteId = card.dataset.noteId;
+                const note = notes.find(n => n.id === noteId);
+                if (note) newOrder.push(note);
+            });
+            
+            notes = newOrder;
+            saveNotes();
+            renderNotes();
+        }
+
+        function createNewNote() {
+            const newNote = {
+                id: Date.now().toString(),
+                title: '',
+                content: '',
+                category: noteCategories[0],
+                color: noteColors[0].value,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            notes.unshift(newNote);
+            editingNoteId = newNote.id;
+            saveNotes();
+            renderNotes();
+        }
+
+        function changeNoteColor(noteId, colorValue) {
+            const note = notes.find(n => n.id === noteId);
+            if (note) {
+                note.color = colorValue;
+                note.updatedAt = Date.now();
+                saveNotes();
+                renderNotes();
+            }
+        }
+
+        function editNote(id) {
+            editingNoteId = id;
+            renderNotes();
+        }
+
+        function saveNote(id) {
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                const titleEl = document.getElementById(`note-title-${id}`);
+                const contentEl = document.getElementById(`note-content-${id}`);
+                
+                let title = titleEl ? titleEl.innerText.trim() : '';
+                let content = contentEl ? contentEl.innerText.trim() : '';
+                
+                if (title.includes('无标题')) title = '';
+                if (content.includes('点击编辑内容')) content = '';
+                
+                note.title = title;
+                note.content = content;
+                note.updatedAt = Date.now();
+                
+                saveNotes();
+            }
+            editingNoteId = null;
+            renderNotes();
+        }
+
+        function deleteNote(id) {
+            if (confirm('确定删除这条便签吗？')) {
+                notes = notes.filter(n => n.id !== id);
+                saveNotes();
+                renderNotes();
+            }
+        }
+
+        function updateNoteCategory(id, category) {
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                note.category = category;
+                note.updatedAt = Date.now();
+                saveNotes();
+            }
+        }
+
+        function saveNotes() {
+            localStorage.setItem('stickyNotes', JSON.stringify(notes));
+        }
+
+        document.getElementById('customCategoryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const name = document.getElementById('customCategoryName').value.trim();
+            if (name && !noteCategories.includes(name)) {
+                noteCategories.push(name);
+                localStorage.setItem('noteCategories', JSON.stringify(noteCategories));
+                renderNotesFilters();
+                closeModal('noteCategoryModal');
+            } else if (noteCategories.includes(name)) {
+                alert('该分类已存在！');
+            }
+        });
+
+        // ============ 记事本功能 ============
+        function createNewDoc() {
+            const newDoc = {
+                id: Date.now().toString(),
+                title: '未命名文档',
+                content: '',
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            documents.unshift(newDoc);
+            saveDocs();
+            renderDocList();
+            loadDoc(newDoc.id);
+        }
+
+        function renderDocList() {
+            const list = document.getElementById('docList');
+            if (!list) return;
+            list.innerHTML = '';
+            
+            let filteredDocs = documents;
+            if (notebookSearchTerm) {
+                filteredDocs = documents.filter(doc => {
+                    const titleMatch = doc.title && doc.title.toLowerCase().includes(notebookSearchTerm);
+                    const contentMatch = doc.content && doc.content.toLowerCase().includes(notebookSearchTerm);
+                    return titleMatch || contentMatch;
+                });
+            }
+            
+            filteredDocs.forEach(doc => {
+                const item = document.createElement('div');
+                item.className = `doc-item p-3 rounded-lg mb-1 ${currentDocId === doc.id ? 'active' : ''}`;
+                item.onclick = () => loadDoc(doc.id);
+                
+                let preview = doc.content.slice(0, 30) || '无内容...';
+                let title = doc.title || '未命名';
+                
+                if (notebookSearchTerm) {
+                    preview = highlightText(preview, notebookSearchTerm);
+                    title = highlightText(title, notebookSearchTerm);
+                }
+                
+                item.innerHTML = `
+                    <div class="font-medium text-sm text-gray-800 truncate">${title}</div>
+                    <div class="text-xs text-gray-500 mt-1 truncate">${preview}</div>
+                    <div class="text-[10px] text-gray-400 mt-1">${new Date(doc.updatedAt).toLocaleDateString()}</div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function loadDoc(id) {
+            currentDocId = id;
+            const doc = documents.find(d => d.id === id);
+            if (doc) {
+                const titleEl = document.getElementById('docTitle');
+                const contentEl = document.getElementById('docContent');
+                if (titleEl) titleEl.value = doc.title;
+                if (contentEl) contentEl.value = doc.content;
+                updateWordCount();
+                renderDocList();
+            }
+        }
+
+        function updateCurrentDoc() {
+            if (!currentDocId) return;
+            
+            const doc = documents.find(d => d.id === currentDocId);
+            if (doc) {
+                const titleEl = document.getElementById('docTitle');
+                const contentEl = document.getElementById('docContent');
+                
+                if (titleEl) doc.title = titleEl.value || '未命名';
+                if (contentEl) doc.content = contentEl.value;
+                doc.updatedAt = Date.now();
+                
+                updateWordCount();
+                
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    saveDocs();
+                    renderDocList();
+                    const status = document.getElementById('saveStatus');
+                    if (status) {
+                        status.classList.remove('hidden');
+                        setTimeout(() => status.classList.add('hidden'), 2000);
+                    }
+                }, 1000);
+            }
+        }
+
+        function updateWordCount() {
+            const contentEl = document.getElementById('docContent');
+            if (!contentEl) return;
+            const count = contentEl.value.length;
+            const countEl = document.getElementById('docWordCount');
+            if (countEl) countEl.textContent = count + ' 字';
+        }
+
+        function saveDocs() {
+            localStorage.setItem('notebookDocs', JSON.stringify(documents));
+        }
+
+        // ============ 导航功能（新布局） ============
+        function renderNav() {
+            const container = document.getElementById('navContainer');
+            const emptyState = document.getElementById('navEmptyState');
+            const titleEl = document.getElementById('currentCategoryTitle');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            // 更新标题
+            let displayData = [];
+            let title = '全部网址';
+            let icon = 'globe';
+            
+            if (currentNavCategory === 'all') {
+                // 显示所有分类的网址
+                navData.forEach(cat => {
+                    displayData = displayData.concat(cat.items.map(item => ({...item, category: cat.name})));
+                });
+                title = navSearchTerm ? '搜索结果' : '全部网址';
+                icon = navSearchTerm ? 'search' : 'globe';
+            } else if (typeof currentNavCategory === 'number') {
+                const cat = navData[currentNavCategory];
+                if (cat) {
+                    displayData = cat.items.map(item => ({...item, category: cat.name}));
+                    title = cat.name;
+                    icon = cat.icon || 'folder';
+                }
+            }
+            
+            // 搜索过滤
+            if (navSearchTerm) {
+                displayData = displayData.filter(link => 
+                    link.name.toLowerCase().includes(navSearchTerm) || 
+                    link.url.toLowerCase().includes(navSearchTerm)
+                );
+                title = `"${navSearchTerm}" 的搜索结果`;
+                icon = 'search';
+            }
+            
+            // 更新标题显示
+            titleEl.innerHTML = `<i class="fas fa-${icon} text-blue-500"></i><span>${title}</span>`;
+            
+            if (displayData.length === 0) {
+                emptyState.classList.remove('hidden');
+                container.classList.add('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+                container.classList.remove('hidden');
+            }
+            
+            displayData.forEach((link, index) => {
+                const card = document.createElement('a');
+                card.href = link.url;
+                card.target = '_blank';
+                card.className = 'link-card group rounded-xl p-4 flex items-center gap-3 relative no-underline text-inherit';
+                card.draggable = true;
+                
+                // 获取favicon或使用默认图标
+                const domain = getHostname(link.url);
+                
+                card.innerHTML = `
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
+                        <i class="fas fa-${link.icon || 'globe'} text-lg"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-800 truncate text-sm">${link.name}</div>
+                        <div class="text-xs text-gray-400 truncate mt-0.5">${domain}</div>
+                    </div>
+                    <button onclick="event.preventDefault(); deleteLinkByUrl('${link.url}')" 
+                            class="delete-btn opacity-0 group-hover:opacity-100 transition-opacity">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function deleteLinkByUrl(url) {
+            if (!confirm('确定删除这个网址吗？')) return;
+            
+            for (let i = 0; i < navData.length; i++) {
+                const idx = navData[i].items.findIndex(item => item.url === url);
+                if (idx !== -1) {
+                    navData[i].items.splice(idx, 1);
+                    if (navData[i].items.length === 0) {
+                        if (confirm('分组已空，是否删除整个分组？')) {
+                            navData.splice(i, 1);
+                            if (currentNavCategory === i) currentNavCategory = 'all';
+                            else if (currentNavCategory > i) currentNavCategory--;
+                        }
+                    }
+                    saveNavData();
+                    renderSidebar();
+                    renderNav();
+                    return;
+                }
+            }
+        }
+
+        function openAddModal(preselectedCategory = '') {
+            document.getElementById('addModal').classList.add('active');
+            document.getElementById('siteName').value = '';
+            document.getElementById('siteUrl').value = '';
+            
+            const select = document.getElementById('categorySelect');
+            select.innerHTML = '';
+            navData.forEach((cat, idx) => {
+                const option = document.createElement('option');
+                option.value = idx;
+                option.textContent = cat.name;
+                if (cat.name === preselectedCategory || (preselectedCategory === '' && idx === currentNavCategory)) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+            
+            if (navData.length === 0) {
+                alert('请先创建一个分组');
+                closeModal('addModal');
+                openCategoryModal();
+                return;
+            }
+        }
+
+        function openCategoryModal() {
+            document.getElementById('categoryModal').classList.add('active');
+            document.getElementById('newCategoryName').value = '';
+            setTimeout(() => document.getElementById('newCategoryName').focus(), 100);
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function selectIcon(iconName) {
+            document.getElementById('selectedIcon').value = iconName;
+            document.querySelectorAll('.icon-option').forEach(btn => {
+                btn.classList.remove('border-blue-500', 'bg-blue-50');
+                btn.classList.add('border-gray-200');
+            });
+            event.currentTarget.classList.remove('border-gray-200');
+            event.currentTarget.classList.add('border-blue-500', 'bg-blue-50');
+        }
+
+        document.getElementById('addForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('siteName').value.trim();
+            let url = document.getElementById('siteUrl').value.trim();
+            const categoryIdx = parseInt(document.getElementById('categorySelect').value);
+            const icon = document.getElementById('selectedIcon').value;
+            
+            if (!name || !url) return;
+            
+            if (url && !url.match(/^https?:\/\//)) {
+                url = 'https://' + url;
+            }
+            
+            if (navData[categoryIdx]) {
+                navData[categoryIdx].items.push({ name, url, icon });
+                saveNavData();
+                renderSidebar();
+                renderNav();
+                closeModal('addModal');
+                
+                // 如果当前不在该分类，自动切换
+                if (currentNavCategory !== categoryIdx) {
+                    selectCategory(categoryIdx);
+                }
+            }
+        });
+
+        document.getElementById('categoryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const categoryName = document.getElementById('newCategoryName').value.trim();
+            
+            if (!categoryName) return;
+            
+            if (navData.find(c => c.name === categoryName)) {
+                alert('该分组已存在');
+                return;
+            }
+            
+            navData.push({ name: categoryName, icon: 'folder', items: [] });
+            saveNavData();
+            renderSidebar();
+            renderNav();
+            closeModal('categoryModal');
+            
+            // 自动选中新分类
+            selectCategory(navData.length - 1);
+        });
+
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.remove('active');
+                }
+            });
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+                if (editingNoteId) {
+                    editingNoteId = null;
+                    renderNotes();
+                }
+            }
+        });
+
+        // 初始化
+        loadData();
+    </script>
+</body>
+</html>
